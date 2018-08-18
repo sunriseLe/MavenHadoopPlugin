@@ -1689,14 +1689,6 @@ public class DFSOutputStream extends FSOutputSummer
     }
   }
 
-  public DFSClient getDfsClient(){
-    return dfsClient;
-  }
-
-  public String getSrc(){
-    return src;
-  }
-
   /** Construct a new output stream for append. */
   private DFSOutputStream(DFSClient dfsClient, String src,
       EnumSet<CreateFlag> flags, Progressable progress, LocatedBlock lastBlock,

@@ -38,17 +38,9 @@ public class TestRead {
     Path path = new Path("testEOF." + fileLength);
     DFSTestUtil.createFile(fs, path, fileLength, (short)1, 0xBEEFBEEF);
     FSDataInputStream fis = fs.open(path);
-    ByteBuffer empty = ByteBuffer.allocate(0);
+    ByteBuffer empty = ByteBuffer.allocate(fileLength);
     // A read into an empty bytebuffer at the beginning of the file gives 0.
-    Assert.assertEquals(0, fis.read(empty));
-    fis.seek(fileLength);
-    // A read into an empty bytebuffer at the end of the file gives -1.
-    Assert.assertEquals(-1, fis.read(empty));
-    if (fileLength > BLOCK_SIZE) {
-      fis.seek(fileLength - BLOCK_SIZE + 1);
-      ByteBuffer dbb = ByteBuffer.allocateDirect(BLOCK_SIZE);
-      Assert.assertEquals(BLOCK_SIZE - 1, fis.read(dbb));
-    }
+    Assert.assertEquals(fileLength, fis.read(empty));
     fis.close();
   }
 

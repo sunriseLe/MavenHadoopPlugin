@@ -18,10 +18,14 @@
 
 package org.apache.hadoop.hdfs;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -93,6 +97,7 @@ import org.apache.hadoop.crypto.key.KeyProviderDelegationTokenExtension;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.sun.xml.bind.v2.model.core.ID;
 
 
 /****************************************************************
@@ -116,6 +121,7 @@ public class DistributedFileSystem extends FileSystem {
     HdfsConfiguration.init();
   }
 
+  /*构造函数*/
   public DistributedFileSystem() {
   }
 
@@ -134,6 +140,7 @@ public class DistributedFileSystem extends FileSystem {
   public URI getUri() { return uri; }
 
   @Override
+  /*初始化文件系统，最重要的是初始化DFSClient以实现对文件系统的操作*/
   public void initialize(URI uri, Configuration conf) throws IOException {
     super.initialize(uri, conf);
     setConf(conf);
@@ -146,6 +153,7 @@ public class DistributedFileSystem extends FileSystem {
         DFSConfigKeys.DFS_USER_HOME_DIR_PREFIX_KEY,
         DFSConfigKeys.DFS_USER_HOME_DIR_PREFIX_DEFAULT);
     
+    //为this.dfs赋值，一个初始化的DFSClient对象；已经连接上了nameNode
     this.dfs = new DFSClient(uri, conf, statistics);
     this.uri = URI.create(uri.getScheme()+"://"+uri.getAuthority());
     this.workingDir = getHomeDirectory();
@@ -157,11 +165,13 @@ public class DistributedFileSystem extends FileSystem {
   }
 
   @Override
+  /*使用DFSClient获取默认的文件块大小*/
   public long getDefaultBlockSize() {
     return dfs.getDefaultBlockSize();
   }
 
   @Override
+  /*使用DFSClient获取默认的文件系统副本数*/
   public short getDefaultReplication() {
     return dfs.getDefaultReplication();
   }
@@ -301,7 +311,9 @@ public class DistributedFileSystem extends FileSystem {
       public FSDataInputStream doCall(final Path p)
           throws IOException, UnresolvedLinkException {
         final DFSInputStream dfsis =
-          dfs.open(getPathName(p), bufferSize, verifyChecksum);
+        		dfs.open(getPathName(p), bufferSize, verifyChecksum);
+        boolean isZip=getZipXattr4AppendOpen(p.toString());
+  	    dfs.setZip(isZip);
         return dfs.createWrappedInputStream(dfsis);
       }
       @Override
@@ -317,6 +329,26 @@ public class DistributedFileSystem extends FileSystem {
       final Progressable progress) throws IOException {
     return append(f, EnumSet.of(CreateFlag.APPEND), bufferSize, progress);
   }
+  
+  public boolean getZipXattr4AppendOpen(String path) {
+		//直接获取该文件的xattr列表    
+		int s=getPathXattr(path);
+		if (s==0) {
+			System.out.println(path+"的xattr为true");
+			return true;
+		}else if (s==1) {
+			System.out.println(path+"的xattr为false");
+			return false;
+		}else if (s==2) {
+			System.out.println(path+"的xattr不存在");
+			return false;
+		}else if (s==-1) {
+			System.out.println("无法判断");
+			return false;
+		}
+		return false;
+	}
+	
 
   /**
    * Append to an existing file (optional operation).
@@ -337,6 +369,8 @@ public class DistributedFileSystem extends FileSystem {
       @Override
       public FSDataOutputStream doCall(final Path p)
           throws IOException {
+    	  boolean isZip=getZipXattr4AppendOpen(p.toString());
+    	  dfs.setZip(isZip);
         return dfs.append(getPathName(p), bufferSize, flag, progress,
             statistics);
       }
@@ -369,7 +403,9 @@ public class DistributedFileSystem extends FileSystem {
       @Override
       public FSDataOutputStream doCall(final Path p)
           throws IOException {
-        return dfs.append(getPathName(p), bufferSize, flag, progress,
+    	  boolean isZip=getZipXattr4AppendOpen(p.toString());
+    	  dfs.setZip(isZip);
+    	  return dfs.append(getPathName(p), bufferSize, flag, progress,
             statistics, favoredNodes);
       }
       @Override
@@ -390,6 +426,104 @@ public class DistributedFileSystem extends FileSystem {
         blockSize, progress, null);
   }
 
+  
+  /*获取父目录是否具有zip的xattr*/
+  public boolean getZipXattr4Create(String path) {
+		File file=new File(path);
+		//父目录不存在，只有一种情况：path为1.txt的形式，这时存储在/user/HADOOP_USER_NAME的目录下
+		if (file.getParent()==null) {
+			//获取HADOOP_USER_NAME来判断父目录的xattr
+			//通过System.getProperty获取HADOOP_USER_NAME
+			String user=System.getProperty("HADOOP_USER_NAME");
+			/* 如果之前没有通过System.setProperty设置HADOOP_USER_NAME，则会返回null。
+			 * 这时的HADOOP_USER_NAME应该为本机的hostname*/
+			if (user==null) {
+				try {
+					InetAddress ia = InetAddress.getLocalHost();
+					user=ia.getHostName();//获取计算机主机名 
+				} catch (UnknownHostException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+			//更新path，变成类似/user/cephlee/1.txt的形式
+			path="/user/"+user+"/"+path;
+			return getZipXattr4Create( path);
+		}else{
+			String parent=file.getParent();
+			try {
+				int s=getPathXattr(parent);
+				return getResult(s, parent);
+			} catch (IllegalArgumentException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		System.out.println("没有xattr");
+		return false;
+	}
+  
+  /* 获取该目录是否存在zip的xattr：
+   * 返回1，说明存在；
+   * 返回2，或说明xattr不存在或者给目录不存在;
+   * 返回-1，说明判断不成功	*/
+  public int getPathXattr(String path) {
+		boolean flag=false;
+		try {
+			//先判断该目录是否存在,存在则获取其xattr
+			if (exists(new Path(path))) {
+				//获取父目录的xattr的name列表
+				List<String> nameList = listXAttrs(new Path(path));
+				for (int i = 0; i < nameList.size(); i++) {
+					if (nameList.get(i).equals("user.zip")) {
+						flag=true;
+						break;
+					}
+				}
+				//通过flag的值，确定xattr是否存在
+				if (flag==true) {//xattr存在,只有xattr值为true才能成功
+					byte[] value= getXAttr(new Path(path), "user.zip");
+					String strVal=new String(value, "utf-8");
+					if (strVal.equals("true")) {//xattr存在且值为true，返回1
+						return 0;
+					}else if (strVal.equals("false")) {
+						return 1;
+					}
+				}else {//xattr不存在,返回2，需要遍历其父目录
+					return 2;
+				}
+			}else{//目录不存在，直接返回2，需要遍历其上层目录
+				return 2;
+			}
+		} catch (IllegalArgumentException | IOException e) {//有异常，返回-1，说明判断不成功
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return -1;//默认返回-1，说明判断不成功	
+	}
+  
+  /*根据getPathXattrs，判断是否需要递归遍历父目录，或者返回对应结果给getZipXattr*/
+  public boolean getResult(int s,String parent) {
+		if (s==0) {//xattr存在且值为true，直接返回true
+			System.out.println(parent+"的xattr为true");
+			return true;
+		}else if (s==1) {
+			System.out.println(parent+"的xattr为false");
+			return false;
+		}else if (s==2) {//xattr不存在或者目录不存在，遍历其父目录
+			if (!parent.equals("/")) {
+				return getZipXattr4Create(parent);
+			}else{//已经遍历到根目录了
+				System.out.println(parent+"的xattr不存在或者该目录不存在");
+				return false;
+			}
+		}else if (s==-1) {//返回-1，说明判断不成功,直接返回false
+			System.out.println("无法判断");
+			return false;
+		} 
+		return false;
+	}
+  
   /**
    * Same as  
    * {@link #create(Path, FsPermission, boolean, int, short, long, 
@@ -417,6 +551,16 @@ public class DistributedFileSystem extends FileSystem {
                 : EnumSet.of(CreateFlag.CREATE),
             true, replication, blockSize, progress, bufferSize, null,
             favoredNodes);
+        boolean isZip=getZipXattr4Create(f.toString());
+        dfs.setZip(isZip);
+        byte[] value=null;
+        //如果isZip为true，这时文件会被压缩，需要设置文xattr也为true
+       if (isZip) {
+        	value=("true").getBytes("utf-8");
+		}else{
+			value=("false").getBytes("utf-8");
+		}
+        setXAttr(p, "user.zip", value);
         return dfs.createWrappedOutputStream(out, statistics);
       }
       @Override
@@ -433,7 +577,7 @@ public class DistributedFileSystem extends FileSystem {
       }
     }.resolve(this, absF);
   }
-  
+	
   @Override
   public FSDataOutputStream create(final Path f, final FsPermission permission,
     final EnumSet<CreateFlag> cflags, final int bufferSize,
@@ -448,6 +592,16 @@ public class DistributedFileSystem extends FileSystem {
         final DFSOutputStream dfsos = dfs.create(getPathName(p), permission,
                 cflags, replication, blockSize, progress, bufferSize,
                 checksumOpt);
+        boolean isZip=getZipXattr4Create(f.toString());
+        dfs.setZip(isZip);
+        byte[] value=null;
+        //如果isZip为true，这时文件会被压缩，需要设置文xattr也为true
+        if (isZip) {
+        	value=("true").getBytes("utf-8");
+		}else{
+			value=("false").getBytes("utf-8");
+		}
+        setXAttr(p, "user.zip", value);
         return dfs.createWrappedOutputStream(dfsos, statistics);
       }
       @Override

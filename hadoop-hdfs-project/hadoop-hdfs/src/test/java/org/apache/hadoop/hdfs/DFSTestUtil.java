@@ -305,6 +305,7 @@ public class DFSTestUtil {
     }
   }
   
+  /*根据filelength自己写，使用Random产生每次写的byte数组*/
   public static void createFile(FileSystem fs, Path fileName, long fileLen, 
       short replFactor, long seed) throws IOException {
     if (!fs.mkdirs(fileName.getParent())) {

@@ -63,6 +63,7 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_REPLICATION_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_REPLICATION_KEY;
 
 import java.io.*;
+import java.lang.reflect.Constructor;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -111,8 +112,6 @@ import org.apache.hadoop.hdfs.client.HdfsDataInputStream;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.hdfs.net.Peer;
 import org.apache.hadoop.hdfs.net.TcpPeerServer;
-import org.apache.hadoop.hdfs.plugin.WrappedFSDataInputStream;
-import org.apache.hadoop.hdfs.plugin.WrappedFSDataOutputStream;
 import org.apache.hadoop.hdfs.protocol.AclException;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveEntry;
@@ -212,7 +211,9 @@ import com.google.common.net.InetAddresses;
  * Hadoop DFS users should obtain an instance of 
  * DistributedFileSystem, which uses DFSClient to handle
  * filesystem tasks.
- *
+ * hdfs用户需要获取DistributedFileSystem实例，这个实例使用DFSClient处理文件系统任务。
+ * DFSClient连接hdfs，并执行节本的文件操作。通过ClientProtocol与NameNode进行通信，
+ * 还可以直接连接DataNodes对块数据进行read/write
  ********************************************************/
 @InterfaceAudience.Private
 public class DFSClient implements java.io.Closeable, RemotePeerFactory,
@@ -249,8 +250,13 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       new DFSHedgedReadMetrics();
   private static ThreadPoolExecutor HEDGED_READ_THREAD_POOL;
   private final Sampler<?> traceSampler;
+  private boolean isZip=false;
 
-  /**
+  public void setZip(boolean isZip) {
+	this.isZip = isZip;
+}
+
+/**
    * DFSClient configuration 
    */
   public static class Conf {
@@ -1408,30 +1414,50 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   /**
    * Wraps the stream in a CryptoInputStream if the underlying file is
    * encrypted.
+   * open()以后的DFSInputStream送入createWrappedInputStream()产生包裹好的加密输入流
    */
   public HdfsDataInputStream createWrappedInputStream(DFSInputStream dfsis)
       throws IOException {
     final FileEncryptionInfo feInfo = dfsis.getFileEncryptionInfo();
-    FilterInputStream wrappedFSDataInputStream = new WrappedFSDataInputStream(dfsis);
-    if (feInfo != null) {
-      // File is encrypted, wrap the stream in a crypto stream.
-      // Currently only one version, so no special logic based on the version #
-      getCryptoProtocolVersion(feInfo);
-      final CryptoCodec codec = getCryptoCodec(conf, feInfo);
-      final KeyVersion decrypted = decryptEncryptedDataEncryptionKey(feInfo);
-      final CryptoInputStream cryptoIn =
-          new CryptoInputStream(wrappedFSDataInputStream, codec, decrypted.getMaterial(),
-              feInfo.getIV());
-      return new HdfsDataInputStream(cryptoIn);
-    } else {
-      // No FileEncryptionInfo so no encryption.
-      return new HdfsDataInputStream(wrappedFSDataInputStream);
-    }
+ 
+    if (isZip) {
+    	FilterInputStream wrappedFSDataInputStream=new WrappedFSDataInputStream(dfsis);
+    	if (feInfo != null) {
+    	      // File is encrypted, wrap the stream in a crypto stream.
+    	      // Currently only one version, so no special logic based on the version #
+    	      getCryptoProtocolVersion(feInfo);
+    	      final CryptoCodec codec = getCryptoCodec(conf, feInfo);
+    	      final KeyVersion decrypted = decryptEncryptedDataEncryptionKey(feInfo);
+    	      final CryptoInputStream cryptoIn =
+    	          new CryptoInputStream(wrappedFSDataInputStream, codec, decrypted.getMaterial(),
+    	              feInfo.getIV());
+    	      return new HdfsDataInputStream(cryptoIn);
+    	    } else {
+    	      // No FileEncryptionInfo so no encryption.
+    	      return new HdfsDataInputStream(wrappedFSDataInputStream);
+    	    }
+	}else{
+		if (feInfo != null) {
+		      // File is encrypted, wrap the stream in a crypto stream.
+		      // Currently only one version, so no special logic based on the version #
+		      getCryptoProtocolVersion(feInfo);
+		      final CryptoCodec codec = getCryptoCodec(conf, feInfo);
+		      final KeyVersion decrypted = decryptEncryptedDataEncryptionKey(feInfo);
+		      final CryptoInputStream cryptoIn =
+		          new CryptoInputStream(dfsis, codec, decrypted.getMaterial(),
+		              feInfo.getIV());//inputstream对应的read，解密
+		      return new HdfsDataInputStream(cryptoIn);
+		    } else {
+		      // No FileEncryptionInfo so no encryption.
+		      return new HdfsDataInputStream(dfsis);
+		    }
+	}
   }
 
   /**
    * Wraps the stream in a CryptoOutputStream if the underlying file is
    * encrypted.
+   * 
    */
   public HdfsDataOutputStream createWrappedOutputStream(DFSOutputStream dfsos,
       FileSystem.Statistics statistics) throws IOException {
@@ -1441,11 +1467,15 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   /**
    * Wraps the stream in a CryptoOutputStream if the underlying file is
    * encrypted.
+   * create()以后的DFSOutputStream送入createWrappedOutputStream()用于产生包裹好的加密输出流
    */
   public HdfsDataOutputStream createWrappedOutputStream(DFSOutputStream dfsos,
       FileSystem.Statistics statistics, long startPos) throws IOException {
     final FileEncryptionInfo feInfo = dfsos.getFileEncryptionInfo();
-    FilterOutputStream wrappedFSDataOutputStream = new WrappedFSDataOutputStream(dfsos);
+    FilterOutputStream wrappedFSDataOutputStream=new FilterOutputStream(dfsos);
+    if (isZip) {
+    	 wrappedFSDataOutputStream= new WrappedFSDataOutputStream(dfsos);
+	}
     if (feInfo != null) {
       // File is encrypted, wrap the stream in a crypto stream.
       // Currently only one version, so no special logic based on the version #
@@ -1809,7 +1839,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @param progress for reporting write-progress; null is acceptable.
    * @param statistics file system statistics; null is acceptable.
    * @return an output stream for writing into the file
-   * 
+   * 在create时，只是产生一个输出流，Append()时产生的是包裹好的输出流
    * @see ClientProtocol#append(String, String, EnumSetWritable)
    */
   public HdfsDataOutputStream append(final String src, final int buffersize,

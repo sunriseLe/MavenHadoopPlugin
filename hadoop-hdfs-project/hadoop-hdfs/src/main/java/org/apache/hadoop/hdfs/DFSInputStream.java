@@ -264,14 +264,6 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
     openInfo();
   }
 
-  public DFSClient getDfsClient(){
-    return dfsClient;
-  }
-
-  public String getSrc(){
-    return src;
-  }
-
   /**
    * Grab the open-file info from namenode
    */

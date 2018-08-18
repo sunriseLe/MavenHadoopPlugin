@@ -16,7 +16,7 @@
   limitations under the License.
 -->
 <document xmlns="http://maven.apache.org/XDOC/2.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance  http://www.springmodules.org/schema/cache/springmodules-cache.xsd http://www.springmodules.org/schema/cache/springmodules-ehcache.xsd"  
   xsi:schemaLocation="http://maven.apache.org/XDOC/2.0 http://maven.apache.org/xsd/xdoc-2.0.xsd">
 
   <properties>
@@ -281,7 +281,7 @@
   
   <section name="Commands and Startup Options for Rolling Upgrade" id="dfsadminCommands">
     
-  <subsection name="DFSAdmin Commands" id="dfsadminCommands">
+  <subsection name="DFSAdmin Commands" ID="dfsadminCommands">
   <h4><code>dfsadmin -rollingUpgrade</code></h4>
   <source>hdfs dfsadmin -rollingUpgrade &lt;query|prepare|finalize&gt;</source>
   <p>
@@ -318,7 +318,7 @@
   </p>
   </subsection>
 
-  <subsection name="NameNode Startup Options" id="dfsadminCommands">
+  <subsection name="NameNode Startup Options" ID="dfsadminCommands">
 
   <h4><code>namenode -rollingUpgrade</code></h4>
   <source>hdfs namenode -rollingUpgrade &lt;downgrade|rollback|started&gt;</source>
