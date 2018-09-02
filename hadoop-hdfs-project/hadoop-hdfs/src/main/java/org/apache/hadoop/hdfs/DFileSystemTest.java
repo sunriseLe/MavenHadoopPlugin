@@ -47,34 +47,53 @@ public class DFileSystemTest {
 			DistributedFileSystem dfs=new DistributedFileSystem();
 			dfs.initialize(new URI("hdfs://192.168.202.34"),new Configuration());
 			
+			//UploadFile(dfs, "/home/lucy/soc-LiveJournal1.txt", "/test/soc-LiveJournal1.txt");
 			
-			//UploadFile(dfs, "/home/lucy/文档/1.txt", "1.txt");
-			//DownloadFile(dfs, "/test/mkddir/1.txt","/home/lucy/1.txt" );
+			int byteBuffer=0;
+			int relLen=0;
+			int newLen=0;
+			byte[] buffer=new byte[4096];
+			int len=6108;
+			
+			try {
+				FSDataInputStream fin = dfs.open(new Path("/test/soc-LiveJournal1.txt"));
+			
+				BufferedOutputStream fout = new BufferedOutputStream(
+						new FileOutputStream("/home/lucy/radom.txt"));
+				
+				byteBuffer = fin.read(1080597000 ,buffer,0,3000);
+				
+				//fin.seek(5000);
+ 				//byteBuffer=fin.read(buffer, 0, len);
+				fout.write(buffer,0,byteBuffer);//指定每次写入的数据长度为实际读取的数据长度
+				
+				// fin.seek(10);
+				
+				//System.out.println(byteBuffer);
+				//String string=new String(buffer,"utf-8");
+				//System.out.println(string);
+				
+				fout.flush();
+			    fout.close();
+			    fin.close();
+			    System.out.println("文件已下载！");
+			} catch (IllegalArgumentException | IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			
 			
-			/*UploadFile(dfs, "/home/lucy/文档/1.txt", "/test/1.txt");*/
-			//AppendFile(dfs, "/home/lucy/文档/1.txt", "/test/1.txt");
+			//DownloadFile(dfs, "/test/mkdir/soc-LiveJournal1.txt","/home/lucy/文档/random.txt" );
+			//AppendFile(dfs, "/home/lucy/com-lj.ungraph.txt", "/test/mkdir/soc-LiveJournal1.txt");
+			//DownloadFile(dfs, "/test/mkdir/soc-LiveJournal1.txt","/home/lucy/文档/soc-LiveJournal1.txt" );
+			
+			//UploadFile(dfs, "/home/lucy/soc-LiveJournal1.txt", "/test/mkdir/soc-LiveJournal1.txt");
 			
 			/*byte[] value=("false").getBytes("utf-8");
 			dfs.setXAttr(new Path("/"), "user.zip", value);*/
 			
 			//UploadFile(dfs, "/home/lucy/文档/1.txt", "/test/mkdir/1.txt");
 			
-			/*byte[] value=("true").getBytes("utf-8");
-			dfs.setXAttr(new Path("/"), "user.zip", value);
-			
-			UploadFile(dfs, "/home/lucy/文档/1.txt", "/1.txt");*/
-			//UploadFile(dfs, "/home/lucy/文档/1.txt", "/1.txt");
-
-			
-			/*UploadFile(dfs, "/home/lucy/文档/big.txt",
-					"/test/big.txt");*/
-			
-			/*boolean result=getParentDir(dfs, "1.txt");
-			System.out.println(result);*/
-
-			/*boolean result=dfs.getParentDir("/user/lucy/1.txt");
-			System.out.println(result);*/
 			
 			/*byte[] value=("true").getBytes("utf-8");
 			dfs.setXAttr(new Path("/"), "user.zip", value);
@@ -84,6 +103,40 @@ public class DFileSystemTest {
 			/*dfs.delete(new Path("/"),true);*/
 			
 			} catch (IOException | URISyntaxException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void tempCode(DistributedFileSystem dfs) {
+		
+		try {
+			/*第一步：上传文件，实质是create一个未压缩的文件*/
+			UploadFile(dfs, "/home/lucy/文档/1.txt", "/test/1.txt");
+			
+			/*第二步：上传文件，实质是create一个压缩的文件
+			 * 先创建/test/mkdir目录,并设置其xattr：user.zip=true
+			 * 再上传文件，实质是create一个压缩的文件*/
+			dfs.mkdir(new Path("/test/mkdir"),new FsPermission(FsAction.ALL,FsAction.ALL,
+					FsAction.ALL));
+			byte[] value=("true").getBytes("utf-8");
+			dfs.setXAttr(new Path("/test/mkdir"), "user.zip", value);
+			UploadFile(dfs, "/home/lucy/文档/1.txt", "/test/mkdir/1.txt");
+			
+			/*第三步：下载一个未压缩的文件，看文件是否与原始上传文件一致*/
+			DownloadFile(dfs, "/test/1.txt","/home/lucy/1.txt" );
+			
+			/*第四步：下载一个压缩的文件，看文件是否与原始上传文件一致，这里文件会进行解压*/
+			DownloadFile(dfs, "/test/mkdir/1.txt","/home/lucy/1.txt" );
+			
+			/*第五步：追加写一个未压缩的文件，看文件是否实现了追加写*/
+			AppendFile(dfs, "/home/lucy/文档/1.txt", "/test/1.txt");
+			
+			/*第六步：追加写一个压缩的文件，看文件是否实现了追加写*/
+			AppendFile(dfs, "/home/lucy/文档/1.txt", "/test/mkdir/1.txt");
+			DownloadFile(dfs, "/test/mkddir/1.txt","/home/lucy/1.txt" );
+			
+		} catch (IllegalArgumentException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
@@ -284,7 +337,7 @@ public class DFileSystemTest {
 		      		FileInputStream(src));
 
 			while ((byteLen = in.read(buffer)) !=-1){
-			   	  System.out.println(byteLen);
+			   	  //System.out.println(byteLen);
 			   	  out.write(buffer,0,byteLen);
 			 }
 			  
@@ -307,10 +360,14 @@ public class DFileSystemTest {
 			FSDataInputStream fin = dfs.open(new Path(src));
 			BufferedOutputStream fout = new BufferedOutputStream(
 					new FileOutputStream(dst));
-			
+			int i=0;
 			while ((byteBuffer = fin.read(buffer)) !=-1){
+				//i++;
 				System.out.println(byteBuffer);
 				fout.write(buffer,0,byteBuffer);//指定每次写入的数据长度为实际读取的数据长度
+				/*if (i==80) {
+					break;
+				}*/
 			}
 			
 			fout.flush();

@@ -16,12 +16,14 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.BlockStorageLocation;
 import org.apache.hadoop.fs.CreateFlag;
+import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.VolumeId;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.client.HdfsDataInputStream;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
-import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
+import org.apache.hadoop.hdfs.protocol.CachePoolEntry;
+import org.apache.hadoop.hdfs.protocol.CachePoolInfo;
 import org.apache.hadoop.util.Progressable;
 
 public class DFSClientTest {
@@ -29,10 +31,21 @@ public class DFSClientTest {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		try {
+			System.setProperty("HADOOP_USER_NAME", "cephlee");
 			DFSClient client = new DFSClient(new URI("hdfs://192.168.202.34"),
 					new Configuration());
 		    System.out.println("集群默认文件块大小："+client.getDefaultBlockSize()/1024/1024+"MB");
 			System.out.println("集群默认副本数为："+client.getDefaultReplication());
+			
+		
+			/*CachePoolInfo cachePool=new CachePoolInfo("cpool");
+			client.addCachePool(cachePool);
+			RemoteIterator<CachePoolEntry> entry=client.listCachePools();
+			while (entry.hasNext()) {
+				CachePoolInfo cache=entry.next().getInfo();
+				System.out.println(cache.toString());
+			}
+			client.removeCachePool("cpool");*/
 			
 			/*UploadFile(client, "/home/lucy/下载/WebStorm-2018.1.5.tar.gz", 
 					"/test/gzip/WebStorm-2018.1.5.tar.gz");*/
